@@ -1,0 +1,9 @@
+{
+  "name": "shui",
+  "version": "1.0.0",
+  "description": "REST API for a digital noticeboard",
+  "scripts": {
+    "test": "node --test"
+  },
+  "type": "commonjs"
+}
