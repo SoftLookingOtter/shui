@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
-const { PutCommand } = require("@aws-sdk/lib-dynamodb");
+const { GetCommand, PutCommand } = require("@aws-sdk/lib-dynamodb");
 const { createUserRepository } = require("../../src/auth/users-repository");
 
 test("saves a user with a unique username condition", async () => {
@@ -52,4 +52,44 @@ test("propagates DynamoDB errors, including duplicate usernames", async () => {
       (receivedError) => receivedError === error,
     );
   }
+});
+
+test("retrieves a user by username", async () => {
+  let sentCommand;
+  const expectedUser = { username: "jesper", passwordHash: "test-hash" };
+  const client = {
+    async send(command) {
+      sentCommand = command;
+      return { Item: expectedUser };
+    },
+  };
+  const users = createUserRepository(client, "users-test");
+
+  const user = await users.findByUsername("jesper");
+
+  assert.deepEqual(user, expectedUser);
+  assert.ok(sentCommand instanceof GetCommand);
+  assert.deepEqual(sentCommand.input, {
+    TableName: "users-test",
+    Key: { username: "jesper" },
+    ConsistentRead: true,
+  });
+});
+
+test("returns undefined when the user does not exist", async () => {
+  const users = createUserRepository({ async send() { return {}; } }, "users-test");
+
+  assert.equal(await users.findByUsername("missing"), undefined);
+});
+
+test("propagates errors when retrieving a user", async () => {
+  const error = new Error("DynamoDB unavailable");
+  const client = {
+    async send() {
+      throw error;
+    },
+  };
+  const users = createUserRepository(client, "users-test");
+
+  await assert.rejects(users.findByUsername("jesper"), (receivedError) => receivedError === error);
 });

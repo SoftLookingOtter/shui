@@ -1,4 +1,4 @@
-const { PutCommand } = require("@aws-sdk/lib-dynamodb");
+const { GetCommand, PutCommand } = require("@aws-sdk/lib-dynamodb");
 
 function createUserRepository(client, tableName) {
   return {
@@ -9,6 +9,14 @@ function createUserRepository(client, tableName) {
         ConditionExpression: "attribute_not_exists(#username)",
         ExpressionAttributeNames: { "#username": "username" },
       }));
+    },
+    async findByUsername(username) {
+      const result = await client.send(new GetCommand({
+        TableName: tableName,
+        Key: { username },
+        ConsistentRead: true,
+      }));
+      return result.Item;
     },
   };
 }
