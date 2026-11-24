@@ -1,9 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { registerUserSchema } = require("../../src/auth/register-schema");
+const { credentialsSchema } = require("../../src/auth/credentials-schema");
 
-test("registerUserSchema accepts a username and password", () => {
-  const result = registerUserSchema.safeParse({
+test("credentialsSchema accepts a username and password", () => {
+  const result = credentialsSchema.safeParse({
     username: "jesper",
     password: "Password123!",
   });
@@ -11,7 +11,7 @@ test("registerUserSchema accepts a username and password", () => {
   assert.equal(result.success, true);
 });
 
-test("registerUserSchema rejects missing, empty, or non-string fields", () => {
+test("credentialsSchema rejects missing, empty, or non-string fields", () => {
   const invalidInputs = [
     { password: "Password123!" },
     { username: "jesper" },
@@ -22,12 +22,12 @@ test("registerUserSchema rejects missing, empty, or non-string fields", () => {
   ];
 
   for (const input of invalidInputs) {
-    assert.equal(registerUserSchema.safeParse(input).success, false);
+    assert.equal(credentialsSchema.safeParse(input).success, false);
   }
 });
 
 test("accepts a password of 72 bytes", () => {
-  const result = registerUserSchema.safeParse({
+  const result = credentialsSchema.safeParse({
     username: "jesper",
     password: "å".repeat(36),
   });
@@ -36,7 +36,7 @@ test("accepts a password of 72 bytes", () => {
 });
 
 test("rejects a password over 72 bytes", () => {
-  const result = registerUserSchema.safeParse({
+  const result = credentialsSchema.safeParse({
     username: "jesper",
     password: "å".repeat(37),
   });

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
-const { registerUserSchema } = require("../../src/auth/register-schema");
+const { credentialsSchema } = require("../../src/auth/credentials-schema");
 const { createRegisterHandler } = require("../../src/http/register-handler");
 
 test("returns 201 when registration succeeds", async () => {
@@ -52,7 +52,7 @@ test("returns 400 for missing or malformed JSON", async () => {
 });
 
 test("returns 400 for invalid registration details", async () => {
-  const handler = createRegisterHandler(async (input) => registerUserSchema.parse(input));
+  const handler = createRegisterHandler(async (input) => credentialsSchema.parse(input));
   const response = await handler({
     body: JSON.stringify({ username: "jesper", password: "" }),
   });
