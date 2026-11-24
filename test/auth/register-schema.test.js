@@ -25,3 +25,21 @@ test("registerUserSchema rejects missing, empty, or non-string fields", () => {
     assert.equal(registerUserSchema.safeParse(input).success, false);
   }
 });
+
+test("accepts a password of 72 bytes", () => {
+  const result = registerUserSchema.safeParse({
+    username: "jesper",
+    password: "å".repeat(36),
+  });
+
+  assert.equal(result.success, true);
+});
+
+test("rejects a password over 72 bytes", () => {
+  const result = registerUserSchema.safeParse({
+    username: "jesper",
+    password: "å".repeat(37),
+  });
+
+  assert.equal(result.success, false);
+});
