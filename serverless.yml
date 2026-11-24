@@ -5,6 +5,23 @@ provider:
   name: aws
   runtime: nodejs24.x
   region: eu-north-1
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+          Resource: !GetAtt UsersTable.Arn
+
+functions:
+  register:
+    handler: src/handlers/register.handler
+    environment:
+      USERS_TABLE_NAME: !Ref UsersTable
+    events:
+      - httpApi:
+          path: /auth/register
+          method: post
 
 resources:
   Resources:
