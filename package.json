@@ -5,5 +5,8 @@
   "scripts": {
     "test": "node --test"
   },
-  "type": "commonjs"
+  "type": "commonjs",
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
 }
