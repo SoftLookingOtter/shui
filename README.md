@@ -1,8 +1,8 @@
 # Shui
 
 Ett serverless REST API för en digital anslagstavla. Projektet är under
-utveckling; registrering, inloggning och skapande av inlägg är konfigurerade
-men har ännu inte driftsatts eller verifierats i AWS.
+utveckling; registrering, inloggning, skapande och listning av inlägg är
+konfigurerade men har ännu inte driftsatts eller verifierats i AWS.
 
 ## Kör tester lokalt
 

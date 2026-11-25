@@ -42,9 +42,52 @@ functions:
       - httpApi:
           path: /posts
           method: post
+  listPosts:
+    handler: src/handlers/list-posts.handler
+    role: !GetAtt ListPostsExecutionRole.Arn
+    environment:
+      POSTS_TABLE_NAME: !Ref PostsTable
+    events:
+      - httpApi:
+          path: /posts
+          method: get
 
 resources:
   Resources:
+    ListPostsExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: list-posts-access
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:Scan
+                  Resource: !GetAtt PostsTable.Arn
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    Fn::Join:
+                      - ":"
+                      - - arn
+                        - !Ref AWS::Partition
+                        - logs
+                        - !Ref AWS::Region
+                        - !Ref AWS::AccountId
+                        - log-group
+                        - /aws/lambda/${self:service}-${sls:stage}-listPosts
+                        - "*"
     CreatePostExecutionRole:
       Type: AWS::IAM::Role
       Properties:
