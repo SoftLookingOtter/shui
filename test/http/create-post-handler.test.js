@@ -1,0 +1,82 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { createAccessToken } = require("../../src/auth/token");
+const { createPost } = require("../../src/posts/create-post");
+const { createPostHandler } = require("../../src/http/create-post-handler");
+
+const secret = "public-test-secret";
+const token = createAccessToken("jesper", secret);
+
+test("creates a post using the verified token identity", async () => {
+  let savedPost;
+  const posts = {
+    async create(post) {
+      savedPost = post;
+    },
+  };
+  const handler = createPostHandler(
+    (input, username) => createPost(input, username, posts),
+    async () => secret,
+  );
+
+  const response = await handler({
+    headers: { authorization: `Bearer ${token}` },
+    body: JSON.stringify({ title: "Rubrik", content: "Hej", username: "someone-else" }),
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(JSON.parse(response.body), {
+    message: "Post created successfully",
+    post: savedPost,
+  });
+  assert.equal(savedPost.username, "jesper");
+  assert.equal(savedPost.title, "Rubrik");
+});
+
+test("returns 401 for a missing or invalid token without saving", async () => {
+  let saved = false;
+  const handler = createPostHandler(async () => { saved = true; }, async () => secret);
+
+  for (const headers of [{}, { authorization: "Bearer invalid" }]) {
+    const response = await handler({
+      headers,
+      body: JSON.stringify({ title: "Rubrik", content: "Hej" }),
+    });
+    assert.equal(response.statusCode, 401);
+    assert.equal(typeof JSON.parse(response.body).error, "string");
+  }
+  assert.equal(saved, false);
+});
+
+test("returns 400 for malformed JSON or invalid post details", async () => {
+  let saved = false;
+  const posts = { async create() { saved = true; } };
+  const handler = createPostHandler(
+    (input, username) => createPost(input, username, posts),
+    async () => secret,
+  );
+
+  for (const body of [undefined, "{", JSON.stringify({ title: "", content: "Hej" })]) {
+    const response = await handler({ headers: { authorization: `Bearer ${token}` }, body });
+    assert.equal(response.statusCode, 400);
+    assert.equal(typeof JSON.parse(response.body).error, "string");
+  }
+  assert.equal(saved, false);
+});
+
+test("logs unexpected errors and returns 500 without exposing details", async (t) => {
+  const log = t.mock.method(console, "error", () => {});
+  const handler = createPostHandler(async () => {
+    throw new Error("Sensitive database details");
+  }, async () => secret);
+
+  const response = await handler({
+    headers: { authorization: `Bearer ${token}` },
+    body: JSON.stringify({ title: "Rubrik", content: "Hej" }),
+  });
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(typeof JSON.parse(response.body).error, "string");
+  assert.doesNotMatch(response.body, /Sensitive database details/);
+  assert.equal(log.mock.callCount(), 1);
+});
