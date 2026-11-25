@@ -1,4 +1,4 @@
-const { GetCommand, PutCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
+const { GetCommand, PutCommand, ScanCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
 
 function createPostRepository(client, tableName) {
   return {
@@ -17,6 +17,31 @@ function createPostRepository(client, tableName) {
         ConsistentRead: true,
       }));
       return result.Item;
+    },
+    async updateOwned(id, username, { title, content, updatedAt }) {
+      const result = await client.send(new UpdateCommand({
+        TableName: tableName,
+        Key: { id },
+        UpdateExpression: "SET #title = :title, #content = :content, #updatedAt = :updatedAt",
+        ConditionExpression: "attribute_exists(#id) AND #username = :username AND #isGuest = :isGuest",
+        ExpressionAttributeNames: {
+          "#id": "id",
+          "#username": "username",
+          "#isGuest": "isGuest",
+          "#title": "title",
+          "#content": "content",
+          "#updatedAt": "updatedAt",
+        },
+        ExpressionAttributeValues: {
+          ":username": username,
+          ":isGuest": false,
+          ":title": title,
+          ":content": content,
+          ":updatedAt": updatedAt,
+        },
+        ReturnValues: "ALL_NEW",
+      }));
+      return result.Attributes;
     },
     async list(username) {
       const posts = [];

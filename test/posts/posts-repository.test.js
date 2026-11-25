@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { GetCommand, PutCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
+const { GetCommand, PutCommand, ScanCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
 const { createPostRepository } = require("../../src/posts/posts-repository");
 
 test("saves a post without overwriting an existing id", async () => {
@@ -81,6 +81,59 @@ test("propagates errors when retrieving a post", async () => {
   }, "posts-test");
 
   await assert.rejects(posts.findById("post-123"), (receivedError) => receivedError === error);
+});
+
+test("updates only the title and content for the owner of a non-guest post", async () => {
+  let command;
+  const updatedPost = { id: "post-123", title: "Ny rubrik", content: "Nytt innehåll" };
+  const client = {
+    async send(sentCommand) {
+      command = sentCommand;
+      return { Attributes: updatedPost };
+    },
+  };
+  const posts = createPostRepository(client, "posts-test");
+
+  const result = await posts.updateOwned("post-123", "jesper", {
+    title: "Ny rubrik",
+    content: "Nytt innehåll",
+    updatedAt: "2026-11-25T12:00:00.000Z",
+  });
+
+  assert.deepEqual(result, updatedPost);
+  assert.ok(command instanceof UpdateCommand);
+  assert.equal(command.input.TableName, "posts-test");
+  assert.deepEqual(command.input.Key, { id: "post-123" });
+  assert.equal(command.input.ConditionExpression,
+    "attribute_exists(#id) AND #username = :username AND #isGuest = :isGuest");
+  assert.equal(command.input.UpdateExpression,
+    "SET #title = :title, #content = :content, #updatedAt = :updatedAt");
+  assert.deepEqual(command.input.ExpressionAttributeValues, {
+    ":username": "jesper",
+    ":isGuest": false,
+    ":title": "Ny rubrik",
+    ":content": "Nytt innehåll",
+    ":updatedAt": "2026-11-25T12:00:00.000Z",
+  });
+  assert.equal(command.input.ReturnValues, "ALL_NEW");
+});
+
+test("propagates DynamoDB errors when updating a post", async () => {
+  const error = new Error("DynamoDB unavailable");
+  const posts = createPostRepository({
+    async send() {
+      throw error;
+    },
+  }, "posts-test");
+
+  await assert.rejects(
+    posts.updateOwned("post-123", "jesper", {
+      title: "Ny rubrik",
+      content: "Nytt innehåll",
+      updatedAt: "2026-11-25T12:00:00.000Z",
+    }),
+    (receivedError) => receivedError === error,
+  );
 });
 
 test("lists every page with newest posts first", async () => {
