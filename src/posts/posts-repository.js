@@ -1,4 +1,4 @@
-const { PutCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
+const { GetCommand, PutCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
 
 function createPostRepository(client, tableName) {
   return {
@@ -9,6 +9,14 @@ function createPostRepository(client, tableName) {
         ConditionExpression: "attribute_not_exists(#id)",
         ExpressionAttributeNames: { "#id": "id" },
       }));
+    },
+    async findById(id) {
+      const result = await client.send(new GetCommand({
+        TableName: tableName,
+        Key: { id },
+        ConsistentRead: true,
+      }));
+      return result.Item;
     },
     async list(username) {
       const posts = [];

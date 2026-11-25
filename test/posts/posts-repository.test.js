@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { PutCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
+const { GetCommand, PutCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
 const { createPostRepository } = require("../../src/posts/posts-repository");
 
 test("saves a post without overwriting an existing id", async () => {
@@ -42,6 +42,45 @@ test("propagates DynamoDB errors when saving a post", async () => {
   const posts = createPostRepository(client, "posts-test");
 
   await assert.rejects(posts.create({ id: "post-123" }), (receivedError) => receivedError === error);
+});
+
+test("retrieves a post by id with a consistent read", async () => {
+  let command;
+  const expectedPost = { id: "post-123", title: "Rubrik" };
+  const client = {
+    async send(sentCommand) {
+      command = sentCommand;
+      return { Item: expectedPost };
+    },
+  };
+  const posts = createPostRepository(client, "posts-test");
+
+  const post = await posts.findById("post-123");
+
+  assert.deepEqual(post, expectedPost);
+  assert.ok(command instanceof GetCommand);
+  assert.deepEqual(command.input, {
+    TableName: "posts-test",
+    Key: { id: "post-123" },
+    ConsistentRead: true,
+  });
+});
+
+test("returns undefined when a post does not exist", async () => {
+  const posts = createPostRepository({ async send() { return {}; } }, "posts-test");
+
+  assert.equal(await posts.findById("missing"), undefined);
+});
+
+test("propagates errors when retrieving a post", async () => {
+  const error = new Error("DynamoDB unavailable");
+  const posts = createPostRepository({
+    async send() {
+      throw error;
+    },
+  }, "posts-test");
+
+  await assert.rejects(posts.findById("post-123"), (receivedError) => receivedError === error);
 });
 
 test("lists every page with newest posts first", async () => {
