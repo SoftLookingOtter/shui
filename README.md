@@ -1,8 +1,8 @@
 # Shui
 
 Ett serverless REST API för en digital anslagstavla. Projektet är under
-utveckling; registrering och inloggning är konfigurerade men har ännu inte
-driftsatts eller verifierats i AWS.
+utveckling; registrering, inloggning och skapande av inlägg är konfigurerade
+men har ännu inte driftsatts eller verifierats i AWS.
 
 ## Kör tester lokalt
 
@@ -13,13 +13,13 @@ npm ci
 npm test
 ```
 
-Testerna använder låtsade AWS-klienter och skapar inga användare i AWS.
+Testerna använder låtsade AWS-klienter och skapar inga användare eller inlägg i AWS.
 
 ## Förbered AWS
 
 Projektet använder regionen `eu-north-1` och standardsteget `dev`. För
-inloggningen behöver du skapa en parameter i AWS Systems Manager Parameter
-Store:
+inloggningen och skapande av inlägg behöver du skapa en parameter i AWS Systems
+Manager Parameter Store:
 
 - Namn: `/shui/dev/jwt-secret`
 - Typ: `SecureString`, standardnivå
