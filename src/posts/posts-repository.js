@@ -1,4 +1,10 @@
-const { GetCommand, PutCommand, ScanCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
+const {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  ScanCommand,
+  UpdateCommand,
+} = require("@aws-sdk/lib-dynamodb");
 
 function createPostRepository(client, tableName) {
   return {
@@ -42,6 +48,22 @@ function createPostRepository(client, tableName) {
         ReturnValues: "ALL_NEW",
       }));
       return result.Attributes;
+    },
+    async deleteOwned(id, username) {
+      await client.send(new DeleteCommand({
+        TableName: tableName,
+        Key: { id },
+        ConditionExpression: "attribute_exists(#id) AND #username = :username AND #isGuest = :isGuest",
+        ExpressionAttributeNames: {
+          "#id": "id",
+          "#username": "username",
+          "#isGuest": "isGuest",
+        },
+        ExpressionAttributeValues: {
+          ":username": username,
+          ":isGuest": false,
+        },
+      }));
     },
     async list(username) {
       const posts = [];

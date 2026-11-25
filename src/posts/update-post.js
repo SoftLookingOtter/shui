@@ -1,8 +1,6 @@
 const { ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
 const { postInputSchema } = require("./post-schema");
-
-class PostNotFoundError extends Error {}
-class PostOwnershipError extends Error {}
+const { PostNotFoundError, PostOwnershipError } = require("./post-errors");
 
 async function updatePost(input, postId, username, posts) {
   if (typeof username !== "string" || username.length === 0) {
