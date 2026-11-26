@@ -1,74 +1,81 @@
 # Shui
 
-Ett serverless REST API för en digital anslagstavla. Alla sju G-endpoints och
-VG-stödet för gästinlägg är driftsatta och verifierade i AWS.
+Shui är en digital anslagstavla. Här kan användare och gäster skapa inlägg,
+och besökare kan läsa kommentarer.
 
-## Driftsatt API
-
-G-versionen finns på:
+**API-adress:**
 [https://k9x5hsdfda.execute-api.eu-north-1.amazonaws.com](https://k9x5hsdfda.execute-api.eu-north-1.amazonaws.com)
 
-## VG: Gästinlägg
+## Testa projektet
 
-`POST /posts` skapar ett gästinlägg när ingen `Authorization`-header skickas.
-Gäster får ett automatiskt genererat användarnamn och `isGuest: true`. Med en
-giltig JWT skapas i stället ett vanligt inlägg; en ogiltig JWT ger `401`.
-
-## VG: Kommentarer (ännu inte driftsatta)
-
-`GET /posts/{postId}/comments` visar kommentarerna till ett inlägg i
-tidsordning. Ett inlägg utan kommentarer ger en tom lista; om inlägget saknas
-returneras `404`.
-
-`POST /posts/{postId}/comments` kräver en giltig JWT och ett `content`-fält.
-Användarnamnet hämtas från tokenen, och kommentarer kan även läggas på
-gästinlägg. När ett inlägg raderas tas dess kommentarer också bort.
-
-## Kodstruktur
-
-`src/handlers/` kopplar AWS-klienter till HTTP-handlers. `src/http/` hanterar
-HTTP-anrop och svar, med återanvändbara Middy-middlewares för autentisering,
-ägarkontroll och Zod-validering. Affärslogik och DynamoDB-repositories finns
-under `src/auth/`, `src/posts/` och `src/comments/`.
-
-## Kör tester lokalt
-
-Använd Node.js 24:
+Du behöver Node.js 24. Kör sedan:
 
 ```sh
 npm ci
 npm test
 ```
 
-Testerna använder låtsade AWS-klienter och skapar inga användare eller inlägg i AWS.
+`npm test` kör projektets tester. De använder en låtsasdatabas och ändrar
+inget i AWS.
 
-`GET /posts` använder DynamoDB-indexen `PostsFeedIndex` och
-`PostsByUsernameIndex` för att lista inlägg utan att skanna hela tabellen.
+## Använd API:t
 
-## Förbered AWS
+### Konto
 
-Projektet använder regionen `eu-north-1` och standardsteget `dev`. För
-inloggningen och skapande av inlägg behöver du skapa en parameter i AWS Systems
-Manager Parameter Store:
+- `POST /auth/register` skapar ett konto.
+- `POST /auth/login` loggar in och ger dig en token.
 
-- Namn: `/shui/dev/jwt-secret`
-- Typ: `SecureString`, standardnivå
-- KMS-nyckel: AWS-hanterade `aws/ssm`
-- Värde: en unik, kryptografiskt slumpmässig hemlighet
+Vissa anrop kräver att du skickar tokenen i en `Authorization`-header:
 
-Exempelvis kan du generera en hemlighet lokalt med `openssl rand -base64 32`
-och ange den i AWS-konsolen. Lägg aldrig hemligheten i Git eller dela den.
-Andra steg än `dev` använder motsvarande parameter `/shui/<steg>/jwt-secret`.
-
-## Paketera och driftsätt
-
-Serverless Framework behöver AWS-behörigheter och kan kräva inloggning eller
-licensnyckel. Paketera med:
-
-```sh
-npx serverless package
+```text
+Authorization: Bearer <token>
 ```
 
-När AWS-kontot och parametern är förberedda kan du driftsätta med
-`npx serverless deploy`. Det skapar AWS-resurser som kan medföra kostnader.
-API:ets URL läggs till här efter verifierad driftsättning.
+### Inlägg
+
+- `GET /posts` visar inlägg. Lägg till `?username=namn` för att filtrera.
+- `GET /posts/{postId}` visar ett inlägg.
+- `POST /posts` skapar ett inlägg. Utan token blir det ett gästinlägg.
+- `PUT /posts/{postId}` ändrar ditt eget inlägg.
+- `DELETE /posts/{postId}` raderar ditt eget inlägg och dess kommentarer.
+
+Gästinlägg får ett automatiskt användarnamn. En ogiltig token ger ett fel; den
+skapar inte ett gästinlägg.
+
+### Kommentarer
+
+- `GET /posts/{postId}/comments` visar kommentarer, äldsta först. Alla får läsa.
+- `POST /posts/{postId}/comments` lägger till en kommentar. Kräver en giltig
+  token och text i fältet `content`.
+
+## Hur koden är ordnad
+
+- `src/handlers/` kopplar API-anropen till AWS.
+- `src/http/` tar emot anrop och skickar svar.
+- `src/http/middlewares/` innehåller gemensamma kontroller för token, ägarskap
+  och indata.
+- `src/auth/`, `src/posts/` och `src/comments/` innehåller regler och
+  databaskod för konton, inlägg och kommentarer.
+
+## Köra projektet i AWS
+
+Projektet använder regionen `eu-north-1` och miljön `dev`. För inloggning
+behöver AWS Systems Manager ha en hemlighet med namnet
+`/shui/dev/jwt-secret` och typen `SecureString`.
+
+Du kan skapa en hemlighet med:
+
+```sh
+openssl rand -base64 32
+```
+
+Spara värdet i AWS. Lägg det aldrig i Git eller dela det.
+
+Paketera eller publicera projektet med:
+
+```sh
+npx serverless package --stage dev
+npx serverless deploy --stage dev
+```
+
+Publicering skapar AWS-resurser och kan kosta pengar.
