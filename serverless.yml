@@ -96,6 +96,7 @@ functions:
     role: !GetAtt DeletePostExecutionRole.Arn
     environment:
       POSTS_TABLE_NAME: !Ref PostsTable
+      COMMENTS_TABLE_NAME: !Ref CommentsTable
       JWT_SECRET_PARAMETER: /shui/${sls:stage}/jwt-secret
     events:
       - httpApi:
@@ -124,6 +125,11 @@ resources:
                     - dynamodb:GetItem
                     - dynamodb:DeleteItem
                   Resource: !GetAtt PostsTable.Arn
+                - Effect: Allow
+                  Action:
+                    - dynamodb:Query
+                    - dynamodb:DeleteItem
+                  Resource: !GetAtt CommentsTable.Arn
                 - Effect: Allow
                   Action:
                     - ssm:GetParameter

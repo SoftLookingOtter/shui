@@ -11,16 +11,24 @@ const ownedPost = {
 };
 
 test("deletes an owned post", async () => {
-  let deleted;
+  const deleted = [];
   const posts = {
     async deleteOwned(id, username) {
-      deleted = { id, username };
+      deleted.push({ id, username });
+    },
+  };
+  const comments = {
+    async deleteForPost(postId) {
+      deleted.push({ postId });
     },
   };
 
-  await deletePost("post-123", "jesper", posts);
+  await deletePost("post-123", "jesper", posts, comments);
 
-  assert.deepEqual(deleted, { id: "post-123", username: "jesper" });
+  assert.deepEqual(deleted, [
+    { id: "post-123", username: "jesper" },
+    { postId: "post-123" },
+  ]);
 });
 
 test("rejects a missing post or a post owned by another user", async () => {
@@ -42,7 +50,7 @@ test("rejects a missing post or a post owned by another user", async () => {
     };
 
     await assert.rejects(
-      deletePost("post-123", "jesper", posts),
+      deletePost("post-123", "jesper", posts, { async deleteForPost() {} }),
       expectedError,
     );
   }
@@ -61,7 +69,10 @@ test("does not allow deleting guest posts", async () => {
     },
   };
 
-  await assert.rejects(deletePost("post-123", "jesper", posts), PostOwnershipError);
+  await assert.rejects(
+    deletePost("post-123", "jesper", posts, { async deleteForPost() {} }),
+    PostOwnershipError,
+  );
 });
 
 test("maps ownership changes during deletion to not-found or forbidden", async () => {
@@ -82,7 +93,10 @@ test("maps ownership changes during deletion to not-found or forbidden", async (
       },
     };
 
-    await assert.rejects(deletePost("post-123", "jesper", posts), expectedError);
+    await assert.rejects(
+      deletePost("post-123", "jesper", posts, { async deleteForPost() {} }),
+      expectedError,
+    );
   }
 });
 
@@ -95,7 +109,24 @@ test("propagates non-conditional database errors", async () => {
   };
 
   await assert.rejects(
-    deletePost("post-123", "jesper", posts),
+    deletePost("post-123", "jesper", posts, { async deleteForPost() {} }),
     (receivedError) => receivedError === error,
   );
+});
+
+test("does not delete comments when deleting the post fails", async () => {
+  let deletedComments = false;
+  const posts = {
+    async deleteOwned() {
+      throw new Error("DynamoDB unavailable");
+    },
+  };
+  const comments = {
+    async deleteForPost() {
+      deletedComments = true;
+    },
+  };
+
+  await assert.rejects(deletePost("post-123", "jesper", posts, comments));
+  assert.equal(deletedComments, false);
 });

@@ -1,7 +1,7 @@
 const { ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
 const { PostNotFoundError, PostOwnershipError } = require("./post-errors");
 
-async function deletePost(postId, username, posts) {
+async function deletePost(postId, username, posts, comments) {
   if (typeof username !== "string" || username.length === 0) {
     throw new TypeError("Username is required");
   }
@@ -26,6 +26,8 @@ async function deletePost(postId, username, posts) {
     }
     throw error;
   }
+
+  await comments.deleteForPost(postId);
 }
 
 module.exports = { deletePost };

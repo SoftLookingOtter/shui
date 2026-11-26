@@ -22,7 +22,7 @@ returneras `404`.
 
 `POST /posts/{postId}/comments` kräver en giltig JWT och ett `content`-fält.
 Användarnamnet hämtas från tokenen, och kommentarer kan även läggas på
-gästinlägg.
+gästinlägg. När ett inlägg raderas tas dess kommentarer också bort.
 
 ## Kör tester lokalt
 

@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { PutCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
+const { DeleteCommand, PutCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
 const { createCommentsRepository } = require("../../src/comments/comments-repository");
 
 test("saves a comment with a sort key based on its creation time", async () => {
@@ -96,6 +96,53 @@ test("returns an empty list when a post has no comments", async () => {
   assert.deepEqual(await comments.listForPost("post-123"), []);
 });
 
+test("deletes every comment across all pages", async () => {
+  const commands = [];
+  const client = {
+    async send(command) {
+      commands.push(command);
+      if (command instanceof QueryCommand) {
+        if (command.input.ExclusiveStartKey === undefined) {
+          return {
+            Items: [{
+              postId: "post-123",
+              commentSortKey: "2026-11-26T10:00:00.000Z#comment-1",
+            }],
+            LastEvaluatedKey: {
+              postId: "post-123",
+              commentSortKey: "2026-11-26T10:00:00.000Z#comment-1",
+            },
+          };
+        }
+        return {
+          Items: [{
+            postId: "post-123",
+            commentSortKey: "2026-11-26T11:00:00.000Z#comment-2",
+          }],
+        };
+      }
+      return {};
+    },
+  };
+  const comments = createCommentsRepository(client, "comments-test");
+
+  await comments.deleteForPost("post-123");
+
+  assert.deepEqual(commands.map((command) => command.constructor), [
+    QueryCommand,
+    DeleteCommand,
+    QueryCommand,
+    DeleteCommand,
+  ]);
+  assert.deepEqual(commands.filter((command) => command instanceof DeleteCommand)
+    .map((command) => command.input.Key), [
+    { postId: "post-123", commentSortKey: "2026-11-26T10:00:00.000Z#comment-1" },
+    { postId: "post-123", commentSortKey: "2026-11-26T11:00:00.000Z#comment-2" },
+  ]);
+  assert.equal(commands[2].input.ExclusiveStartKey.commentSortKey,
+    "2026-11-26T10:00:00.000Z#comment-1");
+});
+
 test("propagates DynamoDB errors when saving or listing comments", async () => {
   const error = new Error("DynamoDB unavailable");
   const comments = createCommentsRepository({
@@ -106,4 +153,15 @@ test("propagates DynamoDB errors when saving or listing comments", async () => {
 
   await assert.rejects(comments.create({ id: "comment-123" }), (receivedError) => receivedError === error);
   await assert.rejects(comments.listForPost("post-123"), (receivedError) => receivedError === error);
+});
+
+test("propagates DynamoDB errors when deleting comments", async () => {
+  const error = new Error("DynamoDB unavailable");
+  const comments = createCommentsRepository({
+    async send() {
+      throw error;
+    },
+  }, "comments-test");
+
+  await assert.rejects(comments.deleteForPost("post-123"), (receivedError) => receivedError === error);
 });

@@ -1,17 +1,25 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, DeleteCommand } = require("@aws-sdk/lib-dynamodb");
+const {
+  DynamoDBDocumentClient,
+  DeleteCommand,
+  QueryCommand,
+} = require("@aws-sdk/lib-dynamodb");
 const { SSMClient, GetParameterCommand } = require("@aws-sdk/client-ssm");
 const { createAccessToken } = require("../../src/auth/token");
 
 const previousTableName = process.env.POSTS_TABLE_NAME;
+const previousCommentsTableName = process.env.COMMENTS_TABLE_NAME;
 const previousParameterName = process.env.JWT_SECRET_PARAMETER;
 process.env.POSTS_TABLE_NAME = "posts-test";
+process.env.COMMENTS_TABLE_NAME = "comments-test";
 process.env.JWT_SECRET_PARAMETER = "/shui/dev/jwt-secret";
 const { handler } = require("../../src/handlers/delete-post");
 if (previousTableName === undefined) delete process.env.POSTS_TABLE_NAME;
 else process.env.POSTS_TABLE_NAME = previousTableName;
+if (previousCommentsTableName === undefined) delete process.env.COMMENTS_TABLE_NAME;
+else process.env.COMMENTS_TABLE_NAME = previousCommentsTableName;
 if (previousParameterName === undefined) delete process.env.JWT_SECRET_PARAMETER;
 else process.env.JWT_SECRET_PARAMETER = previousParameterName;
 
@@ -22,6 +30,14 @@ test("delete post Lambda authorizes and conditionally deletes the owner post", a
   const commands = [];
   t.mock.method(DynamoDBDocumentClient.prototype, "send", async (command) => {
     commands.push(command);
+    if (command instanceof QueryCommand) {
+      return {
+        Items: [{
+          postId: "post-123",
+          commentSortKey: "2026-11-26T10:00:00.000Z#comment-123",
+        }],
+      };
+    }
     return {};
   });
   let secretCommand;
@@ -43,6 +59,13 @@ test("delete post Lambda authorizes and conditionally deletes the owner post", a
     "attribute_exists(#id) AND #username = :username AND #isGuest = :isGuest");
   assert.equal(commands[0].input.ExpressionAttributeValues[":username"], "jesper");
   assert.equal(commands[0].input.ExpressionAttributeValues[":isGuest"], false);
+  assert.ok(commands[1] instanceof QueryCommand);
+  assert.equal(commands[1].input.TableName, "comments-test");
+  assert.ok(commands[2] instanceof DeleteCommand);
+  assert.deepEqual(commands[2].input.Key, {
+    postId: "post-123",
+    commentSortKey: "2026-11-26T10:00:00.000Z#comment-123",
+  });
   assert.ok(secretCommand instanceof GetParameterCommand);
 });
 

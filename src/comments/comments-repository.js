@@ -1,4 +1,4 @@
-const { PutCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
+const { DeleteCommand, PutCommand, QueryCommand } = require("@aws-sdk/lib-dynamodb");
 
 function withoutSortKey(comment) {
   const { commentSortKey, ...publicComment } = comment;
@@ -38,6 +38,33 @@ function createCommentsRepository(client, tableName) {
       } while (exclusiveStartKey !== undefined);
 
       return comments.map(withoutSortKey);
+    },
+    async deleteForPost(postId) {
+      let exclusiveStartKey;
+
+      do {
+        const result = await client.send(new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "#postId = :postId",
+          ExpressionAttributeNames: { "#postId": "postId" },
+          ExpressionAttributeValues: { ":postId": postId },
+          ...(exclusiveStartKey === undefined ? {} : {
+            ExclusiveStartKey: exclusiveStartKey,
+          }),
+        }));
+
+        for (const comment of result.Items ?? []) {
+          await client.send(new DeleteCommand({
+            TableName: tableName,
+            Key: {
+              postId: comment.postId,
+              commentSortKey: comment.commentSortKey,
+            },
+          }));
+        }
+
+        exclusiveStartKey = result.LastEvaluatedKey;
+      } while (exclusiveStartKey !== undefined);
     },
   };
 }
