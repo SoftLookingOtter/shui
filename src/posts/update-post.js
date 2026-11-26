@@ -22,6 +22,7 @@ async function updatePost(input, postId, username, posts) {
       throw error;
     }
 
+    // Läs vid fel för att skilja mellan saknat inlägg och fel ägare.
     const currentPost = await posts.findById(postId);
     if (!currentPost) {
       throw new PostNotFoundError("Post not found");

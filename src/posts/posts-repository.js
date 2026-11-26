@@ -6,6 +6,7 @@ const {
   UpdateCommand,
 } = require("@aws-sdk/lib-dynamodb");
 
+// Alla inlägg samlas i samma partition i feed-indexet.
 const FEED_PARTITION_KEY = "POSTS";
 
 function withoutIndexKeys(post) {
@@ -13,6 +14,7 @@ function withoutIndexKeys(post) {
     return post;
   }
 
+  // Indexnycklarna används bara av databasen och ska inte skickas till klienten.
   const { feedKey, feedSortKey, ...publicPost } = post;
   return publicPost;
 }
@@ -39,6 +41,7 @@ function createPostRepository(client, tableName) {
       }));
       return withoutIndexKeys(result.Item);
     },
+    // Ägaren kontrolleras samtidigt som posten uppdateras.
     async updateOwned(id, username, { title, content, updatedAt }) {
       const result = await client.send(new UpdateCommand({
         TableName: tableName,
@@ -65,6 +68,7 @@ function createPostRepository(client, tableName) {
       return withoutIndexKeys(result.Attributes);
     },
     async deleteOwned(id, username) {
+      // Ägaren kontrolleras samtidigt som posten tas bort.
       await client.send(new DeleteCommand({
         TableName: tableName,
         Key: { id },
@@ -85,6 +89,7 @@ function createPostRepository(client, tableName) {
       let exclusiveStartKey;
       let queryOptions;
 
+      // Välj index utifrån om listan ska filtreras på användarnamn.
       if (username === undefined) {
         queryOptions = {
           IndexName: "PostsFeedIndex",
@@ -101,6 +106,7 @@ function createPostRepository(client, tableName) {
         };
       }
 
+      // DynamoDB kan dela upp svaret i sidor; fortsätt tills allt är hämtat.
       do {
         const result = await client.send(new QueryCommand({
           TableName: tableName,
