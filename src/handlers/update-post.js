@@ -14,6 +14,7 @@ const parameterName = process.env.JWT_SECRET_PARAMETER;
 const handler = createUpdatePostHandler(
   (input, postId, username) => updatePost(input, postId, username, posts),
   () => getJwtSecret(parameterStore, parameterName),
+  (postId) => posts.findById(postId),
 );
 
 module.exports = { handler };

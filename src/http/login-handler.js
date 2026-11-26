@@ -1,7 +1,9 @@
 const { ZodError } = require("zod");
 const { InvalidCredentialsError } = require("../auth/authenticate-user");
 const { createJsonHandler } = require("./json-handler");
+const { createBodyValidationMiddleware } = require("./middlewares/validate-body");
 const { errorResponse, jsonResponse } = require("./responses");
+const { credentialsSchema } = require("../auth/credentials-schema");
 
 function createLoginHandler(login) {
   return createJsonHandler(
@@ -21,6 +23,7 @@ function createLoginHandler(login) {
         return errorResponse(401, "Invalid username or password");
       }
     },
+    [createBodyValidationMiddleware(credentialsSchema)],
   );
 }
 

@@ -1,7 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createAccessToken } = require("../../src/auth/token");
-const { AuthenticationError } = require("../../src/http/authenticate-request");
 const { PostNotFoundError, PostOwnershipError } = require("../../src/posts/post-errors");
 const { createDeletePostHandler } = require("../../src/http/delete-post-handler");
 
@@ -12,7 +11,7 @@ test("deletes with the verified token identity and returns 204 without a body", 
   let received;
   const handler = createDeletePostHandler(async (...args) => {
     received = args;
-  }, async () => secret);
+  }, async () => secret, async () => ({ username: "jesper", isGuest: false }));
 
   const response = await handler({
     headers: { authorization: `Bearer ${token}` },
@@ -25,11 +24,13 @@ test("deletes with the verified token identity and returns 204 without a body", 
 });
 
 test("maps missing authentication, ownership, and not-found errors", async () => {
-  const handler = createDeletePostHandler(async (postId) => {
-    if (postId === "missing") throw new PostNotFoundError();
-    if (postId === "forbidden") throw new PostOwnershipError();
-    throw new AuthenticationError();
-  }, async () => secret);
+  const handler = createDeletePostHandler(async () => {}, async () => secret, async (postId) => {
+    if (postId === "missing") return undefined;
+    return {
+      username: postId === "forbidden" ? "anna" : "jesper",
+      isGuest: false,
+    };
+  });
 
   const request = (postId, authorization = `Bearer ${token}`) => handler({
     headers: { authorization },
@@ -45,7 +46,7 @@ test("logs unexpected errors and returns 500 without exposing details", async (t
   const log = t.mock.method(console, "error", () => {});
   const handler = createDeletePostHandler(async () => {
     throw new Error("Sensitive database details");
-  }, async () => secret);
+  }, async () => secret, async () => ({ username: "jesper", isGuest: false }));
 
   const response = await handler({
     headers: { authorization: `Bearer ${token}` },

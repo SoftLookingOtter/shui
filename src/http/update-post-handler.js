@@ -1,14 +1,23 @@
 const { ZodError } = require("zod");
-const { AuthenticationError, authenticateRequest } = require("./authenticate-request");
+const { AuthenticationError } = require("./authenticate-request");
 const { createJsonHandler } = require("./json-handler");
+const { createAuthenticationMiddleware } = require("./middlewares/authenticate-user");
+const {
+  createPostOwnerAuthorizationMiddleware,
+} = require("./middlewares/authorize-post-owner");
+const { createBodyValidationMiddleware } = require("./middlewares/validate-body");
 const { errorResponse, jsonResponse } = require("./responses");
-const { PostNotFoundError, PostOwnershipError } = require("../posts/update-post");
+const { PostNotFoundError, PostOwnershipError } = require("../posts/post-errors");
+const { postInputSchema } = require("../posts/post-schema");
 
-function createUpdatePostHandler(updatePost, getSecret) {
+function createUpdatePostHandler(updatePost, getSecret, getPost) {
   return createJsonHandler(
     async (event) => {
-      const { username } = await authenticateRequest(event.headers, getSecret);
-      const post = await updatePost(event.body, event.pathParameters?.postId, username);
+      const post = await updatePost(
+        event.body,
+        event.pathParameters?.postId,
+        event.identity.username,
+      );
       return jsonResponse(200, {
         message: "Post updated successfully",
         post,
@@ -28,6 +37,11 @@ function createUpdatePostHandler(updatePost, getSecret) {
         return errorResponse(404, "Post not found");
       }
     },
+    [
+      createAuthenticationMiddleware(getSecret),
+      createBodyValidationMiddleware(postInputSchema),
+      createPostOwnerAuthorizationMiddleware(getPost),
+    ],
   );
 }
 

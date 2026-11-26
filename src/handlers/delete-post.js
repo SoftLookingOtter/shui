@@ -16,6 +16,7 @@ const parameterName = process.env.JWT_SECRET_PARAMETER;
 const handler = createDeletePostHandler(
   (postId, username) => deletePost(postId, username, posts, comments),
   () => getJwtSecret(parameterStore, parameterName),
+  (postId) => posts.findById(postId),
 );
 
 module.exports = { handler };

@@ -4,6 +4,7 @@ const { ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
 const {
   DynamoDBDocumentClient,
   DeleteCommand,
+  GetCommand,
   QueryCommand,
 } = require("@aws-sdk/lib-dynamodb");
 const { SSMClient, GetParameterCommand } = require("@aws-sdk/client-ssm");
@@ -30,6 +31,9 @@ test("delete post Lambda authorizes and conditionally deletes the owner post", a
   const commands = [];
   t.mock.method(DynamoDBDocumentClient.prototype, "send", async (command) => {
     commands.push(command);
+    if (command instanceof GetCommand) {
+      return { Item: ownedPost };
+    }
     if (command instanceof QueryCommand) {
       return {
         Items: [{
@@ -53,16 +57,17 @@ test("delete post Lambda authorizes and conditionally deletes the owner post", a
 
   assert.equal(response.statusCode, 204);
   assert.equal(response.body, undefined);
-  assert.ok(commands[0] instanceof DeleteCommand);
-  assert.equal(commands[0].input.TableName, "posts-test");
-  assert.equal(commands[0].input.ConditionExpression,
+  assert.ok(commands[0] instanceof GetCommand);
+  assert.ok(commands[1] instanceof DeleteCommand);
+  assert.equal(commands[1].input.TableName, "posts-test");
+  assert.equal(commands[1].input.ConditionExpression,
     "attribute_exists(#id) AND #username = :username AND #isGuest = :isGuest");
-  assert.equal(commands[0].input.ExpressionAttributeValues[":username"], "jesper");
-  assert.equal(commands[0].input.ExpressionAttributeValues[":isGuest"], false);
-  assert.ok(commands[1] instanceof QueryCommand);
-  assert.equal(commands[1].input.TableName, "comments-test");
-  assert.ok(commands[2] instanceof DeleteCommand);
-  assert.deepEqual(commands[2].input.Key, {
+  assert.equal(commands[1].input.ExpressionAttributeValues[":username"], "jesper");
+  assert.equal(commands[1].input.ExpressionAttributeValues[":isGuest"], false);
+  assert.ok(commands[2] instanceof QueryCommand);
+  assert.equal(commands[2].input.TableName, "comments-test");
+  assert.ok(commands[3] instanceof DeleteCommand);
+  assert.deepEqual(commands[3].input.Key, {
     postId: "post-123",
     commentSortKey: "2026-11-26T10:00:00.000Z#comment-123",
   });
@@ -91,5 +96,5 @@ test("delete post Lambda returns forbidden when the user is not the owner", asyn
   });
 
   assert.equal(response.statusCode, 403);
-  assert.equal(deleteAttempted, true);
+  assert.equal(deleteAttempted, false);
 });

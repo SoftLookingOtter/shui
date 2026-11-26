@@ -1,17 +1,19 @@
 const { ZodError } = require("zod");
 const { PostNotFoundError } = require("../posts/post-errors");
-const { AuthenticationError, authenticateRequest } = require("./authenticate-request");
+const { AuthenticationError } = require("./authenticate-request");
 const { createJsonHandler } = require("./json-handler");
+const { createAuthenticationMiddleware } = require("./middlewares/authenticate-user");
+const { createBodyValidationMiddleware } = require("./middlewares/validate-body");
 const { errorResponse, jsonResponse } = require("./responses");
+const { commentInputSchema } = require("../comments/comment-schema");
 
 function createCommentHandler(createComment, getSecret) {
   return createJsonHandler(
     async (event) => {
-      const { username } = await authenticateRequest(event.headers, getSecret);
       const comment = await createComment(
         event.body,
         event.pathParameters?.postId,
-        username,
+        event.identity.username,
       );
       return jsonResponse(201, {
         message: "Comment created successfully",
@@ -29,6 +31,10 @@ function createCommentHandler(createComment, getSecret) {
         return errorResponse(404, "Post not found");
       }
     },
+    [
+      createAuthenticationMiddleware(getSecret),
+      createBodyValidationMiddleware(commentInputSchema),
+    ],
   );
 }
 

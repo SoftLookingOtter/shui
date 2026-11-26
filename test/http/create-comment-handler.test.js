@@ -27,7 +27,7 @@ test("creates a comment using the verified token identity", async () => {
     message: "Comment created successfully",
     comment,
   });
-  assert.deepEqual(received, [{ content: "Hej", username: "someone-else" }, "post-123", "jesper"]);
+  assert.deepEqual(received, [{ content: "Hej" }, "post-123", "jesper"]);
 });
 
 test("rejects missing or invalid authentication without creating a comment", async () => {

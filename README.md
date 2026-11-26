@@ -24,6 +24,13 @@ returneras `404`.
 Användarnamnet hämtas från tokenen, och kommentarer kan även läggas på
 gästinlägg. När ett inlägg raderas tas dess kommentarer också bort.
 
+## Kodstruktur
+
+`src/handlers/` kopplar AWS-klienter till HTTP-handlers. `src/http/` hanterar
+HTTP-anrop och svar, med återanvändbara Middy-middlewares för autentisering,
+ägarkontroll och Zod-validering. Affärslogik och DynamoDB-repositories finns
+under `src/auth/`, `src/posts/` och `src/comments/`.
+
 ## Kör tester lokalt
 
 Använd Node.js 24:

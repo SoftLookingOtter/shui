@@ -2,7 +2,6 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { ZodError } = require("zod");
 const { createAccessToken } = require("../../src/auth/token");
-const { PostNotFoundError, PostOwnershipError } = require("../../src/posts/update-post");
 const { createUpdatePostHandler } = require("../../src/http/update-post-handler");
 
 const secret = "public-test-secret";
@@ -14,7 +13,7 @@ test("updates a post using the verified token identity", async () => {
   const handler = createUpdatePostHandler(async (...args) => {
     received = args;
     return updatedPost;
-  }, async () => secret);
+  }, async () => secret, async () => ({ username: "jesper", isGuest: false }));
 
   const response = await handler({
     headers: { authorization: `Bearer ${token}` },
@@ -28,19 +27,23 @@ test("updates a post using the verified token identity", async () => {
     post: updatedPost,
   });
   assert.deepEqual(received, [
-    { title: "Ny", content: "Text", username: "someone-else" },
+    { title: "Ny", content: "Text" },
     "post-123",
     "jesper",
   ]);
 });
 
 test("maps authentication, validation, ownership, and not-found errors", async () => {
-  const handler = createUpdatePostHandler(async (input, postId) => {
-    if (postId === "missing") throw new PostNotFoundError();
-    if (postId === "forbidden") throw new PostOwnershipError();
+  const handler = createUpdatePostHandler(async (input) => {
     if (!input.title) throw new ZodError([]);
     return {};
-  }, async () => secret);
+  }, async () => secret, async (postId) => {
+    if (postId === "missing") return undefined;
+    return {
+      username: postId === "forbidden" ? "anna" : "jesper",
+      isGuest: false,
+    };
+  });
 
   const request = (postId, body, authorization = `Bearer ${token}`) => handler({
     headers: { authorization },
@@ -58,7 +61,7 @@ test("logs unexpected errors and returns 500 without exposing details", async (t
   const log = t.mock.method(console, "error", () => {});
   const handler = createUpdatePostHandler(async () => {
     throw new Error("Sensitive database details");
-  }, async () => secret);
+  }, async () => secret, async () => ({ username: "jesper", isGuest: false }));
 
   const response = await handler({
     headers: { authorization: `Bearer ${token}` },

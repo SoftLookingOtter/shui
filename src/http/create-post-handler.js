@@ -1,22 +1,19 @@
 const { ZodError } = require("zod");
-const { AuthenticationError, authenticateRequest } = require("./authenticate-request");
+const { AuthenticationError } = require("./authenticate-request");
 const { createJsonHandler } = require("./json-handler");
+const {
+  createOptionalAuthenticationMiddleware,
+} = require("./middlewares/authenticate-user");
+const { createBodyValidationMiddleware } = require("./middlewares/validate-body");
 const { errorResponse, jsonResponse } = require("./responses");
+const { postInputSchema } = require("../posts/post-schema");
 
 function createPostHandler(createPost, createGuestPost, getSecret) {
   return createJsonHandler(
     async (event) => {
-      // Utan token blir inlägget ett gästinlägg; skickade token måste vara giltiga.
-      const hasAuthorizationHeader = Object.keys(event.headers ?? {})
-        .some((name) => name.toLowerCase() === "authorization");
-      let post;
-
-      if (hasAuthorizationHeader) {
-        const { username } = await authenticateRequest(event.headers, getSecret);
-        post = await createPost(event.body, username);
-      } else {
-        post = await createGuestPost(event.body);
-      }
+      const post = event.identity
+        ? await createPost(event.body, event.identity.username)
+        : await createGuestPost(event.body);
 
       return jsonResponse(201, {
         message: "Post created successfully",
@@ -31,6 +28,10 @@ function createPostHandler(createPost, createGuestPost, getSecret) {
         return errorResponse(401, "Invalid token");
       }
     },
+    [
+      createOptionalAuthenticationMiddleware(getSecret),
+      createBodyValidationMiddleware(postInputSchema),
+    ],
   );
 }
 

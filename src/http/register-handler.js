@@ -1,7 +1,9 @@
 const { ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
 const { ZodError } = require("zod");
 const { createJsonHandler } = require("./json-handler");
+const { createBodyValidationMiddleware } = require("./middlewares/validate-body");
 const { errorResponse, jsonResponse } = require("./responses");
+const { credentialsSchema } = require("../auth/credentials-schema");
 
 function createRegisterHandler(register) {
   return createJsonHandler(
@@ -19,8 +21,8 @@ function createRegisterHandler(register) {
       if (error instanceof ConditionalCheckFailedException) {
         return errorResponse(409, "Username already registered");
       }
-
     },
+    [createBodyValidationMiddleware(credentialsSchema)],
   );
 }
 
