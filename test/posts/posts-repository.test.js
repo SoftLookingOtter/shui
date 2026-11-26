@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { GetCommand, PutCommand, ScanCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
+const { GetCommand, PutCommand, QueryCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
 const { createPostRepository } = require("../../src/posts/posts-repository");
 
 test("saves a post without overwriting an existing id", async () => {
@@ -24,12 +24,14 @@ test("saves a post without overwriting an existing id", async () => {
   await posts.create(post);
 
   assert.ok(sentCommand instanceof PutCommand);
-  assert.deepEqual(sentCommand.input, {
-    TableName: "posts-test",
-    Item: post,
-    ConditionExpression: "attribute_not_exists(#id)",
-    ExpressionAttributeNames: { "#id": "id" },
+  assert.equal(sentCommand.input.TableName, "posts-test");
+  assert.deepEqual(sentCommand.input.Item, {
+    ...post,
+    feedKey: "POSTS",
+    feedSortKey: `${post.createdAt}#${post.id}`,
   });
+  assert.equal(sentCommand.input.ConditionExpression, "attribute_not_exists(#id)");
+  assert.deepEqual(sentCommand.input.ExpressionAttributeNames, { "#id": "id" });
 });
 
 test("propagates DynamoDB errors when saving a post", async () => {
@@ -50,7 +52,7 @@ test("retrieves a post by id with a consistent read", async () => {
   const client = {
     async send(sentCommand) {
       command = sentCommand;
-      return { Item: expectedPost };
+      return { Item: { ...expectedPost, feedKey: "POSTS", feedSortKey: "2026-11-25T10:00:00.000Z#post-123" } };
     },
   };
   const posts = createPostRepository(client, "posts-test");
@@ -89,7 +91,13 @@ test("updates only the title and content for the owner of a non-guest post", asy
   const client = {
     async send(sentCommand) {
       command = sentCommand;
-      return { Attributes: updatedPost };
+      return {
+        Attributes: {
+          ...updatedPost,
+          feedKey: "POSTS",
+          feedSortKey: "2026-11-25T10:00:00.000Z#post-123",
+        },
+      };
     },
   };
   const posts = createPostRepository(client, "posts-test");
@@ -136,19 +144,33 @@ test("propagates DynamoDB errors when updating a post", async () => {
   );
 });
 
-test("lists every page with newest posts first", async () => {
+test("queries every feed page newest-first and hides index keys", async () => {
   const commands = [];
   const client = {
     async send(command) {
       commands.push(command);
       if (commands.length === 1) {
         return {
-          Items: [{ id: "older", createdAt: "2026-11-24T10:00:00.000Z" }],
-          LastEvaluatedKey: { id: "older" },
+          Items: [{
+            id: "newer",
+            createdAt: "2026-11-25T10:00:00.000Z",
+            feedKey: "POSTS",
+            feedSortKey: "2026-11-25T10:00:00.000Z#newer",
+          }],
+          LastEvaluatedKey: {
+            id: "newer",
+            feedKey: "POSTS",
+            feedSortKey: "2026-11-25T10:00:00.000Z#newer",
+          },
         };
       }
       return {
-        Items: [{ id: "newer", createdAt: "2026-11-25T10:00:00.000Z" }],
+        Items: [{
+          id: "older",
+          createdAt: "2026-11-24T10:00:00.000Z",
+          feedKey: "POSTS",
+          feedSortKey: "2026-11-24T10:00:00.000Z#older",
+        }],
       };
     },
   };
@@ -156,15 +178,37 @@ test("lists every page with newest posts first", async () => {
 
   const result = await posts.list();
 
-  assert.deepEqual(result.map(({ id }) => id), ["newer", "older"]);
-  assert.ok(commands.every((command) => command instanceof ScanCommand));
+  assert.deepEqual(result, [
+    { id: "newer", createdAt: "2026-11-25T10:00:00.000Z" },
+    { id: "older", createdAt: "2026-11-24T10:00:00.000Z" },
+  ]);
+  assert.ok(commands.every((command) => command instanceof QueryCommand));
   assert.deepEqual(commands.map(({ input }) => input), [
-    { TableName: "posts-test" },
-    { TableName: "posts-test", ExclusiveStartKey: { id: "older" } },
+    {
+      TableName: "posts-test",
+      IndexName: "PostsFeedIndex",
+      KeyConditionExpression: "#feedKey = :feedKey",
+      ExpressionAttributeNames: { "#feedKey": "feedKey" },
+      ExpressionAttributeValues: { ":feedKey": "POSTS" },
+      ScanIndexForward: false,
+    },
+    {
+      TableName: "posts-test",
+      IndexName: "PostsFeedIndex",
+      KeyConditionExpression: "#feedKey = :feedKey",
+      ExpressionAttributeNames: { "#feedKey": "feedKey" },
+      ExpressionAttributeValues: { ":feedKey": "POSTS" },
+      ScanIndexForward: false,
+      ExclusiveStartKey: {
+        id: "newer",
+        feedKey: "POSTS",
+        feedSortKey: "2026-11-25T10:00:00.000Z#newer",
+      },
+    },
   ]);
 });
 
-test("filters listed posts by username across all pages", async () => {
+test("queries the username index across all pages", async () => {
   const commands = [];
   let page = 0;
   const client = {
@@ -173,11 +217,27 @@ test("filters listed posts by username across all pages", async () => {
       page += 1;
       return page === 1
         ? {
-          Items: [{ id: "post-1", username: "jesper", createdAt: "2026-11-24T10:00:00.000Z" }],
-          LastEvaluatedKey: { id: "post-1" },
+          Items: [{
+            id: "post-2",
+            username: "jesper",
+            createdAt: "2026-11-25T10:00:00.000Z",
+            feedKey: "POSTS",
+            feedSortKey: "2026-11-25T10:00:00.000Z#post-2",
+          }],
+          LastEvaluatedKey: {
+            id: "post-2",
+            username: "jesper",
+            feedSortKey: "2026-11-25T10:00:00.000Z#post-2",
+          },
         }
         : {
-          Items: [{ id: "post-2", username: "jesper", createdAt: "2026-11-25T10:00:00.000Z" }],
+          Items: [{
+            id: "post-1",
+            username: "jesper",
+            createdAt: "2026-11-24T10:00:00.000Z",
+            feedKey: "POSTS",
+            feedSortKey: "2026-11-24T10:00:00.000Z#post-1",
+          }],
         };
     },
   };
@@ -185,14 +245,24 @@ test("filters listed posts by username across all pages", async () => {
 
   const result = await posts.list("jesper");
 
-  assert.deepEqual(result.map(({ id }) => id), ["post-2", "post-1"]);
-  assert.deepEqual(commands.map(({ input }) => input.FilterExpression), [
-    "#username = :username",
-    "#username = :username",
+  assert.deepEqual(result, [
+    { id: "post-2", username: "jesper", createdAt: "2026-11-25T10:00:00.000Z" },
+    { id: "post-1", username: "jesper", createdAt: "2026-11-24T10:00:00.000Z" },
   ]);
+  assert.ok(commands.every((command) => command instanceof QueryCommand));
+  assert.deepEqual(commands.map(({ input }) => input.IndexName), [
+    "PostsByUsernameIndex",
+    "PostsByUsernameIndex",
+  ]);
+  assert.deepEqual(commands[0].input.KeyConditionExpression, "#username = :username");
   assert.deepEqual(commands[0].input.ExpressionAttributeNames, { "#username": "username" });
   assert.deepEqual(commands[0].input.ExpressionAttributeValues, { ":username": "jesper" });
-  assert.deepEqual(commands[1].input.ExclusiveStartKey, { id: "post-1" });
+  assert.equal(commands[0].input.ScanIndexForward, false);
+  assert.deepEqual(commands[1].input.ExclusiveStartKey, {
+    id: "post-2",
+    username: "jesper",
+    feedSortKey: "2026-11-25T10:00:00.000Z#post-2",
+  });
 });
 
 test("returns an empty list when there are no posts", async () => {

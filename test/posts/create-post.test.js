@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createPost } = require("../../src/posts/create-post");
+const { createGuestPost, createPost } = require("../../src/posts/create-post");
 
 test("creates and saves a post using the supplied identity", async () => {
   const savedPosts = [];
@@ -60,6 +60,64 @@ test("propagates errors when saving a post fails", async () => {
 
   await assert.rejects(
     createPost({ title: "Rubrik", content: "Hej" }, "jesper", posts),
+    (receivedError) => receivedError === error,
+  );
+});
+
+test("creates a guest post with a generated username and guest flag", async () => {
+  const savedPosts = [];
+  const posts = {
+    async create(post) {
+      savedPosts.push(post);
+    },
+  };
+  const input = {
+    title: "Gästinlägg",
+    content: "Hej!",
+    username: "someone-else",
+    isGuest: false,
+    id: "client-id",
+  };
+
+  const post = await createGuestPost(input, posts);
+  const secondPost = await createGuestPost(input, posts);
+
+  assert.deepEqual(savedPosts[0], post);
+  assert.equal(post.username, `guest-${post.username.slice("guest-".length)}`);
+  assert.match(post.username, /^guest-[0-9a-f-]{36}$/);
+  assert.notEqual(post.username, secondPost.username);
+  assert.notEqual(post.id, secondPost.id);
+  assert.equal(post.isGuest, true);
+  assert.equal(post.title, "Gästinlägg");
+  assert.equal(post.content, "Hej!");
+  assert.equal(post.updatedAt, post.createdAt);
+});
+
+test("rejects invalid guest post input without saving", async () => {
+  let saved = false;
+  const posts = {
+    async create() {
+      saved = true;
+    },
+  };
+
+  await assert.rejects(
+    createGuestPost({ title: "Gästinlägg", content: "" }, posts),
+    { name: "ZodError" },
+  );
+  assert.equal(saved, false);
+});
+
+test("propagates errors when saving a guest post fails", async () => {
+  const error = new Error("Database unavailable");
+  const posts = {
+    async create() {
+      throw error;
+    },
+  };
+
+  await assert.rejects(
+    createGuestPost({ title: "Gästinlägg", content: "Hej!" }, posts),
     (receivedError) => receivedError === error,
   );
 });

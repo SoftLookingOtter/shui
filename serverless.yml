@@ -228,8 +228,16 @@ resources:
               Statement:
                 - Effect: Allow
                   Action:
-                    - dynamodb:Scan
-                  Resource: !GetAtt PostsTable.Arn
+                    - dynamodb:Query
+                  Resource:
+                    - Fn::Join:
+                        - ""
+                        - - !GetAtt PostsTable.Arn
+                          - /index/PostsFeedIndex
+                    - Fn::Join:
+                        - ""
+                        - - !GetAtt PostsTable.Arn
+                          - /index/PostsByUsernameIndex
                 - Effect: Allow
                   Action:
                     - logs:CreateLogStream
@@ -354,6 +362,29 @@ resources:
         AttributeDefinitions:
           - AttributeName: id
             AttributeType: S
+          - AttributeName: feedKey
+            AttributeType: S
+          - AttributeName: feedSortKey
+            AttributeType: S
+          - AttributeName: username
+            AttributeType: S
         KeySchema:
           - AttributeName: id
             KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: PostsFeedIndex
+            KeySchema:
+              - AttributeName: feedKey
+                KeyType: HASH
+              - AttributeName: feedSortKey
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: PostsByUsernameIndex
+            KeySchema:
+              - AttributeName: username
+                KeyType: HASH
+              - AttributeName: feedSortKey
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL

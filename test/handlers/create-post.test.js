@@ -38,7 +38,10 @@ test("create post handler verifies the token and saves the post", async (t) => {
   assert.equal(body.post.username, "jesper");
   assert.ok(postCommand instanceof PutCommand);
   assert.equal(postCommand.input.TableName, "posts-test");
-  assert.deepEqual(postCommand.input.Item, body.post);
+  const { feedKey, feedSortKey, ...storedPost } = postCommand.input.Item;
+  assert.deepEqual(storedPost, body.post);
+  assert.equal(feedKey, "POSTS");
+  assert.equal(feedSortKey, `${body.post.createdAt}#${body.post.id}`);
   assert.equal(postCommand.input.ConditionExpression, "attribute_not_exists(#id)");
   assert.ok(secretCommand instanceof GetParameterCommand);
   assert.deepEqual(secretCommand.input, {

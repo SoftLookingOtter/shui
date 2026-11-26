@@ -16,6 +16,9 @@ npm test
 
 Testerna använder låtsade AWS-klienter och skapar inga användare eller inlägg i AWS.
 
+`GET /posts` använder DynamoDB-indexen `PostsFeedIndex` och
+`PostsByUsernameIndex` för att lista inlägg utan att skanna hela tabellen.
+
 ## Förbered AWS
 
 Projektet använder regionen `eu-north-1` och standardsteget `dev`. För

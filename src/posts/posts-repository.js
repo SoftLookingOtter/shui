@@ -2,16 +2,31 @@ const {
   DeleteCommand,
   GetCommand,
   PutCommand,
-  ScanCommand,
+  QueryCommand,
   UpdateCommand,
 } = require("@aws-sdk/lib-dynamodb");
+
+const FEED_PARTITION_KEY = "POSTS";
+
+function withoutIndexKeys(post) {
+  if (!post) {
+    return post;
+  }
+
+  const { feedKey, feedSortKey, ...publicPost } = post;
+  return publicPost;
+}
 
 function createPostRepository(client, tableName) {
   return {
     async create(post) {
       await client.send(new PutCommand({
         TableName: tableName,
-        Item: post,
+        Item: {
+          ...post,
+          feedKey: FEED_PARTITION_KEY,
+          feedSortKey: `${post.createdAt}#${post.id}`,
+        },
         ConditionExpression: "attribute_not_exists(#id)",
         ExpressionAttributeNames: { "#id": "id" },
       }));
@@ -22,7 +37,7 @@ function createPostRepository(client, tableName) {
         Key: { id },
         ConsistentRead: true,
       }));
-      return result.Item;
+      return withoutIndexKeys(result.Item);
     },
     async updateOwned(id, username, { title, content, updatedAt }) {
       const result = await client.send(new UpdateCommand({
@@ -47,7 +62,7 @@ function createPostRepository(client, tableName) {
         },
         ReturnValues: "ALL_NEW",
       }));
-      return result.Attributes;
+      return withoutIndexKeys(result.Attributes);
     },
     async deleteOwned(id, username) {
       await client.send(new DeleteCommand({
@@ -68,15 +83,24 @@ function createPostRepository(client, tableName) {
     async list(username) {
       const posts = [];
       let exclusiveStartKey;
+      const byUsername = username !== undefined;
+      const indexName = byUsername ? "PostsByUsernameIndex" : "PostsFeedIndex";
+      const keyCondition = byUsername
+        ? "#username = :username"
+        : "#feedKey = :feedKey";
 
       do {
-        const result = await client.send(new ScanCommand({
+        const result = await client.send(new QueryCommand({
           TableName: tableName,
-          ...(username === undefined ? {} : {
-            FilterExpression: "#username = :username",
-            ExpressionAttributeNames: { "#username": "username" },
-            ExpressionAttributeValues: { ":username": username },
-          }),
+          IndexName: indexName,
+          KeyConditionExpression: keyCondition,
+          ExpressionAttributeNames: byUsername
+            ? { "#username": "username" }
+            : { "#feedKey": "feedKey" },
+          ExpressionAttributeValues: byUsername
+            ? { ":username": username }
+            : { ":feedKey": FEED_PARTITION_KEY },
+          ScanIndexForward: false,
           ...(exclusiveStartKey === undefined ? {} : {
             ExclusiveStartKey: exclusiveStartKey,
           }),
@@ -85,7 +109,7 @@ function createPostRepository(client, tableName) {
         exclusiveStartKey = result.LastEvaluatedKey;
       } while (exclusiveStartKey !== undefined);
 
-      return posts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return posts.map(withoutIndexKeys);
     },
   };
 }
