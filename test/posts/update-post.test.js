@@ -21,9 +21,6 @@ test("updates an owned post without changing its id, owner, or creation date", a
   let update;
   const updatedPost = { ...originalPost, title: "Ny rubrik", content: "Nytt innehåll" };
   const posts = {
-    async findById() {
-      return originalPost;
-    },
     async updateOwned(id, username, changes) {
       update = { id, username, changes };
       return { ...updatedPost, updatedAt: changes.updatedAt };
@@ -54,40 +51,40 @@ test("updates an owned post without changing its id, owner, or creation date", a
 });
 
 test("rejects a missing post or a post owned by another user", async () => {
-  const missingPostRepository = {
-    async findById() {
-      return undefined;
-    },
-    async updateOwned() {
-      assert.fail("Must not update a missing post");
-    },
-  };
-  await assert.rejects(
-    updatePost({ title: "Ny", content: "Text" }, "missing", "jesper", missingPostRepository),
-    PostNotFoundError,
-  );
+  const conditionalError = new ConditionalCheckFailedException({
+    message: "Post does not exist or is not owned by the user",
+    $metadata: {},
+  });
+  for (const [currentPost, expectedError] of [
+    [undefined, PostNotFoundError],
+    [{ ...originalPost, username: "anna" }, PostOwnershipError],
+  ]) {
+    const posts = {
+      async updateOwned() {
+        throw conditionalError;
+      },
+      async findById() {
+        return currentPost;
+      },
+    };
 
-  const otherOwnerRepository = {
-    async findById() {
-      return { ...originalPost, username: "anna" };
-    },
-    async updateOwned() {
-      assert.fail("Must not update another user's post");
-    },
-  };
-  await assert.rejects(
-    updatePost({ title: "Ny", content: "Text" }, "post-123", "jesper", otherOwnerRepository),
-    PostOwnershipError,
-  );
+    await assert.rejects(
+      updatePost({ title: "Ny", content: "Text" }, "post-123", "jesper", posts),
+      expectedError,
+    );
+  }
 });
 
 test("does not allow updating guest posts", async () => {
   const posts = {
+    async updateOwned() {
+      throw new ConditionalCheckFailedException({
+        message: "Post is a guest post",
+        $metadata: {},
+      });
+    },
     async findById() {
       return { ...originalPost, isGuest: true };
-    },
-    async updateOwned() {
-      assert.fail("Must not update a guest post");
     },
   };
 
@@ -100,9 +97,6 @@ test("does not allow updating guest posts", async () => {
 test("rejects invalid input or missing identity without updating", async () => {
   let updated = false;
   const posts = {
-    async findById() {
-      return originalPost;
-    },
     async updateOwned() {
       updated = true;
     },
@@ -128,11 +122,9 @@ test("maps ownership changes during update to not-found or forbidden", async () 
     [undefined, PostNotFoundError],
     [{ ...originalPost, username: "anna" }, PostOwnershipError],
   ]) {
-    let reads = 0;
     const posts = {
       async findById() {
-        reads += 1;
-        return reads === 1 ? originalPost : currentPost;
+        return currentPost;
       },
       async updateOwned() {
         throw conditionalError;
@@ -149,9 +141,6 @@ test("maps ownership changes during update to not-found or forbidden", async () 
 test("propagates non-conditional database errors", async () => {
   const error = new Error("DynamoDB unavailable");
   const posts = {
-    async findById() {
-      return originalPost;
-    },
     async updateOwned() {
       throw error;
     },

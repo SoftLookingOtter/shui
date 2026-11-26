@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { DynamoDBDocumentClient, DeleteCommand, GetCommand } = require("@aws-sdk/lib-dynamodb");
+const { ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBDocumentClient, DeleteCommand } = require("@aws-sdk/lib-dynamodb");
 const { SSMClient, GetParameterCommand } = require("@aws-sdk/client-ssm");
 const { createAccessToken } = require("../../src/auth/token");
 
@@ -21,7 +22,7 @@ test("delete post Lambda authorizes and conditionally deletes the owner post", a
   const commands = [];
   t.mock.method(DynamoDBDocumentClient.prototype, "send", async (command) => {
     commands.push(command);
-    return command instanceof GetCommand ? { Item: ownedPost } : {};
+    return {};
   });
   let secretCommand;
   t.mock.method(SSMClient.prototype, "send", async (command) => {
@@ -36,22 +37,26 @@ test("delete post Lambda authorizes and conditionally deletes the owner post", a
 
   assert.equal(response.statusCode, 204);
   assert.equal(response.body, undefined);
-  assert.ok(commands[0] instanceof GetCommand);
-  assert.ok(commands[1] instanceof DeleteCommand);
-  assert.equal(commands[1].input.TableName, "posts-test");
-  assert.equal(commands[1].input.ConditionExpression,
+  assert.ok(commands[0] instanceof DeleteCommand);
+  assert.equal(commands[0].input.TableName, "posts-test");
+  assert.equal(commands[0].input.ConditionExpression,
     "attribute_exists(#id) AND #username = :username AND #isGuest = :isGuest");
-  assert.equal(commands[1].input.ExpressionAttributeValues[":username"], "jesper");
-  assert.equal(commands[1].input.ExpressionAttributeValues[":isGuest"], false);
+  assert.equal(commands[0].input.ExpressionAttributeValues[":username"], "jesper");
+  assert.equal(commands[0].input.ExpressionAttributeValues[":isGuest"], false);
   assert.ok(secretCommand instanceof GetParameterCommand);
 });
 
-test("delete post Lambda does not delete a post owned by someone else", async (t) => {
-  let deleted = false;
+test("delete post Lambda returns forbidden when the user is not the owner", async (t) => {
+  let deleteAttempted = false;
   t.mock.method(DynamoDBDocumentClient.prototype, "send", async (command) => {
-    if (command instanceof GetCommand) return { Item: { ...ownedPost, username: "anna" } };
-    deleted = true;
-    return {};
+    if (command instanceof DeleteCommand) {
+      deleteAttempted = true;
+      throw new ConditionalCheckFailedException({
+        message: "Post is not owned by the user",
+        $metadata: {},
+      });
+    }
+    return { Item: { ...ownedPost, username: "anna" } };
   });
   t.mock.method(SSMClient.prototype, "send", async () => ({
     Parameter: { Type: "SecureString", Value: testSecret },
@@ -63,5 +68,5 @@ test("delete post Lambda does not delete a post owned by someone else", async (t
   });
 
   assert.equal(response.statusCode, 403);
-  assert.equal(deleted, false);
+  assert.equal(deleteAttempted, true);
 });

@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
+const { ConditionalCheckFailedException } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBDocumentClient, UpdateCommand } = require("@aws-sdk/lib-dynamodb");
 const { SSMClient, GetParameterCommand } = require("@aws-sdk/client-ssm");
 const { createAccessToken } = require("../../src/auth/token");
 
@@ -29,7 +30,6 @@ test("update post Lambda authorizes and conditionally updates the owner post", a
   const commands = [];
   t.mock.method(DynamoDBDocumentClient.prototype, "send", async (command) => {
     commands.push(command);
-    if (command instanceof GetCommand) return { Item: originalPost };
     return { Attributes: { ...originalPost, title: "Ny", content: "Text" } };
   });
   let secretCommand;
@@ -46,22 +46,26 @@ test("update post Lambda authorizes and conditionally updates the owner post", a
 
   assert.equal(response.statusCode, 200);
   assert.equal(JSON.parse(response.body).post.title, "Ny");
-  assert.ok(commands[0] instanceof GetCommand);
-  assert.ok(commands[1] instanceof UpdateCommand);
-  assert.equal(commands[1].input.TableName, "posts-test");
-  assert.equal(commands[1].input.ConditionExpression,
+  assert.ok(commands[0] instanceof UpdateCommand);
+  assert.equal(commands[0].input.TableName, "posts-test");
+  assert.equal(commands[0].input.ConditionExpression,
     "attribute_exists(#id) AND #username = :username AND #isGuest = :isGuest");
-  assert.deepEqual(commands[1].input.ExpressionAttributeValues[":username"], "jesper");
-  assert.equal(commands[1].input.ExpressionAttributeValues[":isGuest"], false);
+  assert.deepEqual(commands[0].input.ExpressionAttributeValues[":username"], "jesper");
+  assert.equal(commands[0].input.ExpressionAttributeValues[":isGuest"], false);
   assert.ok(secretCommand instanceof GetParameterCommand);
 });
 
-test("update post Lambda does not update when the user is not the owner", async (t) => {
+test("update post Lambda returns forbidden when the user is not the owner", async (t) => {
   let updates = 0;
   t.mock.method(DynamoDBDocumentClient.prototype, "send", async (command) => {
-    if (command instanceof GetCommand) return { Item: { ...originalPost, username: "anna" } };
-    updates += 1;
-    return {};
+    if (command instanceof UpdateCommand) {
+      updates += 1;
+      throw new ConditionalCheckFailedException({
+        message: "Post is not owned by the user",
+        $metadata: {},
+      });
+    }
+    return { Item: { ...originalPost, username: "anna" } };
   });
   t.mock.method(SSMClient.prototype, "send", async () => ({
     Parameter: { Type: "SecureString", Value: testSecret },
@@ -74,5 +78,5 @@ test("update post Lambda does not update when the user is not the owner", async 
   });
 
   assert.equal(response.statusCode, 403);
-  assert.equal(updates, 0);
+  assert.equal(updates, 1);
 });

@@ -13,9 +13,6 @@ const ownedPost = {
 test("deletes an owned post", async () => {
   let deleted;
   const posts = {
-    async findById() {
-      return ownedPost;
-    },
     async deleteOwned(id, username) {
       deleted = { id, username };
     },
@@ -27,40 +24,40 @@ test("deletes an owned post", async () => {
 });
 
 test("rejects a missing post or a post owned by another user", async () => {
-  const missingPostRepository = {
-    async findById() {
-      return undefined;
-    },
-    async deleteOwned() {
-      assert.fail("Must not delete a missing post");
-    },
-  };
-  await assert.rejects(
-    deletePost("missing", "jesper", missingPostRepository),
-    PostNotFoundError,
-  );
+  const conditionalError = new ConditionalCheckFailedException({
+    message: "Post does not exist or is not owned by the user",
+    $metadata: {},
+  });
+  for (const [currentPost, expectedError] of [
+    [undefined, PostNotFoundError],
+    [{ ...ownedPost, username: "anna" }, PostOwnershipError],
+  ]) {
+    const posts = {
+      async deleteOwned() {
+        throw conditionalError;
+      },
+      async findById() {
+        return currentPost;
+      },
+    };
 
-  const otherOwnerRepository = {
-    async findById() {
-      return { ...ownedPost, username: "anna" };
-    },
-    async deleteOwned() {
-      assert.fail("Must not delete another user's post");
-    },
-  };
-  await assert.rejects(
-    deletePost("post-123", "jesper", otherOwnerRepository),
-    PostOwnershipError,
-  );
+    await assert.rejects(
+      deletePost("post-123", "jesper", posts),
+      expectedError,
+    );
+  }
 });
 
 test("does not allow deleting guest posts", async () => {
   const posts = {
+    async deleteOwned() {
+      throw new ConditionalCheckFailedException({
+        message: "Post is a guest post",
+        $metadata: {},
+      });
+    },
     async findById() {
       return { ...ownedPost, isGuest: true };
-    },
-    async deleteOwned() {
-      assert.fail("Must not delete a guest post");
     },
   };
 
@@ -76,11 +73,9 @@ test("maps ownership changes during deletion to not-found or forbidden", async (
     [undefined, PostNotFoundError],
     [{ ...ownedPost, username: "anna" }, PostOwnershipError],
   ]) {
-    let reads = 0;
     const posts = {
       async findById() {
-        reads += 1;
-        return reads === 1 ? ownedPost : currentPost;
+        return currentPost;
       },
       async deleteOwned() {
         throw conditionalError;
@@ -94,9 +89,6 @@ test("maps ownership changes during deletion to not-found or forbidden", async (
 test("propagates non-conditional database errors", async () => {
   const error = new Error("DynamoDB unavailable");
   const posts = {
-    async findById() {
-      return ownedPost;
-    },
     async deleteOwned() {
       throw error;
     },

@@ -9,14 +9,6 @@ async function deletePost(postId, username, posts) {
     throw new PostNotFoundError("Post not found");
   }
 
-  const existingPost = await posts.findById(postId);
-  if (!existingPost) {
-    throw new PostNotFoundError("Post not found");
-  }
-  if (existingPost.username !== username || existingPost.isGuest === true) {
-    throw new PostOwnershipError("User does not own this post");
-  }
-
   try {
     await posts.deleteOwned(postId, username);
   } catch (error) {

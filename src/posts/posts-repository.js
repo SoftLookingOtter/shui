@@ -83,23 +83,28 @@ function createPostRepository(client, tableName) {
     async list(username) {
       const posts = [];
       let exclusiveStartKey;
-      const byUsername = username !== undefined;
-      const indexName = byUsername ? "PostsByUsernameIndex" : "PostsFeedIndex";
-      const keyCondition = byUsername
-        ? "#username = :username"
-        : "#feedKey = :feedKey";
+      let queryOptions;
+
+      if (username === undefined) {
+        queryOptions = {
+          IndexName: "PostsFeedIndex",
+          KeyConditionExpression: "#feedKey = :feedKey",
+          ExpressionAttributeNames: { "#feedKey": "feedKey" },
+          ExpressionAttributeValues: { ":feedKey": FEED_PARTITION_KEY },
+        };
+      } else {
+        queryOptions = {
+          IndexName: "PostsByUsernameIndex",
+          KeyConditionExpression: "#username = :username",
+          ExpressionAttributeNames: { "#username": "username" },
+          ExpressionAttributeValues: { ":username": username },
+        };
+      }
 
       do {
         const result = await client.send(new QueryCommand({
           TableName: tableName,
-          IndexName: indexName,
-          KeyConditionExpression: keyCondition,
-          ExpressionAttributeNames: byUsername
-            ? { "#username": "username" }
-            : { "#feedKey": "feedKey" },
-          ExpressionAttributeValues: byUsername
-            ? { ":username": username }
-            : { ":feedKey": FEED_PARTITION_KEY },
+          ...queryOptions,
           ScanIndexForward: false,
           ...(exclusiveStartKey === undefined ? {} : {
             ExclusiveStartKey: exclusiveStartKey,

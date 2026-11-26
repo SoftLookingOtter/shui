@@ -11,22 +11,12 @@ async function updatePost(input, postId, username, posts) {
   }
 
   const { title, content } = postInputSchema.parse(input);
-  const existingPost = await posts.findById(postId);
-  if (!existingPost) {
-    throw new PostNotFoundError("Post not found");
-  }
-  if (existingPost.username !== username || existingPost.isGuest === true) {
-    throw new PostOwnershipError("User does not own this post");
-  }
-
-  const updatedAt = new Date().toISOString();
   try {
-    const updatedPost = await posts.updateOwned(postId, username, {
+    return await posts.updateOwned(postId, username, {
       title,
       content,
-      updatedAt,
+      updatedAt: new Date().toISOString(),
     });
-    return updatedPost ?? { ...existingPost, title, content, updatedAt };
   } catch (error) {
     if (!(error instanceof ConditionalCheckFailedException)) {
       throw error;
