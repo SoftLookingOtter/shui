@@ -1,9 +1,24 @@
 # Shui
 
-Ett serverless REST API för en digital anslagstavla. Projektet är under
-utveckling; registrering, inloggning, skapande, listning, hämtning, uppdatering
-och radering av inlägg är konfigurerade men har ännu inte driftsatts eller
-verifierats i AWS.
+Ett serverless REST API för en digital anslagstavla. Alla sju G-endpoints och
+VG-stödet för gästinlägg är driftsatta och verifierade i AWS.
+
+## Driftsatt API
+
+G-versionen finns på:
+[https://k9x5hsdfda.execute-api.eu-north-1.amazonaws.com](https://k9x5hsdfda.execute-api.eu-north-1.amazonaws.com)
+
+## VG: Gästinlägg
+
+`POST /posts` skapar ett gästinlägg när ingen `Authorization`-header skickas.
+Gäster får ett automatiskt genererat användarnamn och `isGuest: true`. Med en
+giltig JWT skapas i stället ett vanligt inlägg; en ogiltig JWT ger `401`.
+
+## VG: Kommentarer (ännu inte driftsatta)
+
+`GET /posts/{postId}/comments` visar kommentarerna till ett inlägg i
+tidsordning. Ett inlägg utan kommentarer ger en tom lista; om inlägget saknas
+returneras `404`.
 
 ## Kör tester lokalt
 

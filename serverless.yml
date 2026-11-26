@@ -60,6 +60,16 @@ functions:
       - httpApi:
           path: /posts/{postId}
           method: get
+  getComments:
+    handler: src/handlers/get-comments.handler
+    role: !GetAtt GetCommentsExecutionRole.Arn
+    environment:
+      POSTS_TABLE_NAME: !Ref PostsTable
+      COMMENTS_TABLE_NAME: !Ref CommentsTable
+    events:
+      - httpApi:
+          path: /posts/{postId}/comments
+          method: get
   updatePost:
     handler: src/handlers/update-post.handler
     role: !GetAtt UpdatePostExecutionRole.Arn
@@ -210,6 +220,44 @@ resources:
                         - !Ref AWS::AccountId
                         - log-group
                         - /aws/lambda/${self:service}-${sls:stage}-getPost
+                        - "*"
+    GetCommentsExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: get-comments-access
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                  Resource: !GetAtt PostsTable.Arn
+                - Effect: Allow
+                  Action:
+                    - dynamodb:Query
+                  Resource: !GetAtt CommentsTable.Arn
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    Fn::Join:
+                      - ":"
+                      - - arn
+                        - !Ref AWS::Partition
+                        - logs
+                        - !Ref AWS::Region
+                        - !Ref AWS::AccountId
+                        - log-group
+                        - /aws/lambda/${self:service}-${sls:stage}-getComments
                         - "*"
     ListPostsExecutionRole:
       Type: AWS::IAM::Role
@@ -388,3 +436,17 @@ resources:
                 KeyType: RANGE
             Projection:
               ProjectionType: ALL
+    CommentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: postId
+            AttributeType: S
+          - AttributeName: commentSortKey
+            AttributeType: S
+        KeySchema:
+          - AttributeName: postId
+            KeyType: HASH
+          - AttributeName: commentSortKey
+            KeyType: RANGE

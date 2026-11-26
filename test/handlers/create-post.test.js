@@ -50,6 +50,39 @@ test("create post handler verifies the token and saves the post", async (t) => {
   });
 });
 
+test("create post handler creates a guest post without reading the JWT secret", async (t) => {
+  let postCommand;
+  const save = t.mock.method(DynamoDBDocumentClient.prototype, "send", async (command) => {
+    postCommand = command;
+  });
+  const getSecret = t.mock.method(SSMClient.prototype, "send", async () => {
+    throw new Error("Guest posts should not read the JWT secret");
+  });
+
+  const response = await handler({
+    body: JSON.stringify({
+      title: "Gästinlägg",
+      content: "Hej!",
+      username: "someone-else",
+      isGuest: false,
+    }),
+  });
+  const body = JSON.parse(response.body);
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(body.message, "Post created successfully");
+  assert.match(body.post.username, /^guest-[0-9a-f-]{36}$/);
+  assert.equal(body.post.isGuest, true);
+  assert.equal(body.post.title, "Gästinlägg");
+  assert.equal(body.post.content, "Hej!");
+  assert.ok(postCommand instanceof PutCommand);
+  assert.equal(postCommand.input.TableName, "posts-test");
+  assert.equal(postCommand.input.Item.username, body.post.username);
+  assert.equal(postCommand.input.Item.isGuest, true);
+  assert.equal(save.mock.callCount(), 1);
+  assert.equal(getSecret.mock.callCount(), 0);
+});
+
 test("create post handler does not save when the token is invalid", async (t) => {
   const save = t.mock.method(DynamoDBDocumentClient.prototype, "send", async () => {});
   t.mock.method(SSMClient.prototype, "send", async () => ({
