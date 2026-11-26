@@ -70,6 +70,17 @@ functions:
       - httpApi:
           path: /posts/{postId}/comments
           method: get
+  createComment:
+    handler: src/handlers/create-comment.handler
+    role: !GetAtt CreateCommentExecutionRole.Arn
+    environment:
+      POSTS_TABLE_NAME: !Ref PostsTable
+      COMMENTS_TABLE_NAME: !Ref CommentsTable
+      JWT_SECRET_PARAMETER: /shui/${sls:stage}/jwt-secret
+    events:
+      - httpApi:
+          path: /posts/{postId}/comments
+          method: post
   updatePost:
     handler: src/handlers/update-post.handler
     role: !GetAtt UpdatePostExecutionRole.Arn
@@ -258,6 +269,56 @@ resources:
                         - !Ref AWS::AccountId
                         - log-group
                         - /aws/lambda/${self:service}-${sls:stage}-getComments
+                        - "*"
+    CreateCommentExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: create-comment-access
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                  Resource: !GetAtt PostsTable.Arn
+                - Effect: Allow
+                  Action:
+                    - dynamodb:PutItem
+                  Resource: !GetAtt CommentsTable.Arn
+                - Effect: Allow
+                  Action:
+                    - ssm:GetParameter
+                  Resource:
+                    Fn::Join:
+                      - ":"
+                      - - arn
+                        - !Ref AWS::Partition
+                        - ssm
+                        - !Ref AWS::Region
+                        - !Ref AWS::AccountId
+                        - parameter/shui/${sls:stage}/jwt-secret
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    Fn::Join:
+                      - ":"
+                      - - arn
+                        - !Ref AWS::Partition
+                        - logs
+                        - !Ref AWS::Region
+                        - !Ref AWS::AccountId
+                        - log-group
+                        - /aws/lambda/${self:service}-${sls:stage}-createComment
                         - "*"
     ListPostsExecutionRole:
       Type: AWS::IAM::Role

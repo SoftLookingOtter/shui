@@ -20,6 +20,10 @@ giltig JWT skapas i stället ett vanligt inlägg; en ogiltig JWT ger `401`.
 tidsordning. Ett inlägg utan kommentarer ger en tom lista; om inlägget saknas
 returneras `404`.
 
+`POST /posts/{postId}/comments` kräver en giltig JWT och ett `content`-fält.
+Användarnamnet hämtas från tokenen, och kommentarer kan även läggas på
+gästinlägg.
+
 ## Kör tester lokalt
 
 Använd Node.js 24:
